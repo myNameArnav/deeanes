@@ -2,7 +2,7 @@
 
 A tiny macOS menu bar app for switching system-wide DNS servers in one click, with live latency for each server.
 
-<img src="docs/screenshot.png" width="320" alt="Deeanes menu showing DNS presets with latency and jitter">
+<img src="docs/screenshot.png" width="298" alt="Deeanes menu showing DNS servers with latency, jitter, packet loss, encrypted-DNS locks and an ad-block shield">
 
 - **One click, whole system.** Applies to every enabled network service (Wi-Fi, Ethernet, USB tethering). VPN services like Tailscale manage their own DNS and are left alone.
 - **Live latency.** While the menu is open, every server gets a real DNS query each second, with jitter and packet loss over the last 30 s. Your router's row ("Automatic") is a quick read on Wi-Fi quality.
@@ -11,6 +11,18 @@ A tiny macOS menu bar app for switching system-wide DNS servers in one click, wi
 - **Interception warning.** A red line appears if your network or ISP is secretly answering DNS for you.
 - **Menu bar badge.** Shows which server is active (`CF`, `G`, …), including after changes made in System Settings.
 - **Editable list.** Rename, reorder, add, or remove servers, and set your own badge, in Edit Servers. Servers can be IP addresses or hostnames (`dns.example.com`); hostnames are looked up once when you type them, since macOS only accepts IPs.
+
+<img src="docs/editor.png" width="520" alt="Edit Servers window with name, badge and server fields for each preset, including a hostname entry">
+
+## Releases
+
+| Version | Date | Changes |
+|---|---|---|
+| [0.0.5](../../releases/tag/v0.0.5) | 2026-11-24 | Edit Servers: long server lists scroll to follow the caret. |
+| [0.0.4](../../releases/tag/v0.0.4) | 2026-11-24 | Hostnames as DNS servers (looked up once and cached). Editor fields take focus instantly instead of after ~0.5 s. |
+| [0.0.3](../../releases/tag/v0.0.3) | 2026-11-23 | Lock icon for servers macOS upgrades to encrypted DNS (DoH/DoT). |
+| [0.0.2](../../releases/tag/v0.0.2) | 2026-11-23 | Apple Silicon only (half the download), new app icon, `.dmg` download. |
+| [0.0.1](../../releases/tag/v0.0.1) | 2026-11-23 | First release. |
 
 ## Resource use
 
@@ -26,7 +38,7 @@ Measured on an M4 MacBook Air (macOS 27), v0.0.2:
 
 ## Install
 
-1. Download `Deeanes-<version>.dmg` from [Releases](../../releases), open it, and drag Deeanes to Applications. It is about 490 KB. A `.zip` is also there if you prefer.
+1. Download `Deeanes-<version>.dmg` from [Releases](../../releases), open it, and drag Deeanes to Applications. It is about 550 KB. A `.zip` is also there if you prefer.
 2. Open Deeanes from Applications.
 3. The app is not notarized, so macOS blocks the first launch. Allow it in **System Settings → Privacy & Security → Open Anyway**, or run:
    ```sh
