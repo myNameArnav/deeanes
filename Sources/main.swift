@@ -437,7 +437,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             EditorWindow.shared.show()
             DispatchQueue.main.asyncAfter(deadline: .now() + 1) { EditorWindow.shared.timeClicks() }
         }
-        if let text = env["DEEANES_TYPE_SERVERS"] {
+        if env["DEEANES_ARROW_RIGHT"] != nil {
+            EditorWindow.shared.show()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+                EditorWindow.shared.arrowRight {
+                    if let path = self.env["DEEANES_EDITOR_SNAPSHOT"] { EditorWindow.shared.snapshot(to: path) }
+                    exit(0)
+                }
+            }
+        } else if let text = env["DEEANES_TYPE_SERVERS"] {
             // Types into the last row's servers field, then prints what the store resolved.
             EditorWindow.shared.show()
             DispatchQueue.main.asyncAfter(deadline: .now() + 1) {

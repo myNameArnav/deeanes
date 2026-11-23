@@ -80,24 +80,76 @@ struct PresetRow: View {
                     drag.start(preset.id)
                     return NSItemProvider(object: preset.id.uuidString as NSString)
                 }
-            TextField("Name", text: $preset.name)
+            Field(placeholder: "Name", text: $preset.name)
                 .frame(width: 130)
-            TextField(derivedBadge(preset.name), text: Binding(
+            Field(placeholder: derivedBadge(preset.name), text: Binding(
                 get: { preset.badge ?? "" },
                 set: { preset.badge = $0.isEmpty ? nil : String($0.prefix(2)) }))
                 .frame(width: 44)
                 .help("Label shown next to the menu bar icon while this is active")
-            TextField("1.1.1.1, dns.example.com", text: $preset.serversText)
-                .foregroundStyle(hasError ? Color.red : Color.primary)
+            Field(placeholder: "1.1.1.1, dns.example.com", text: $preset.serversText, isError: hasError)
                 .help(serversHelp)
             Button(action: onDelete) { Image(systemName: "minus.circle") }
                 .buttonStyle(.borderless)
                 .help("Remove")
         }
-        .textFieldStyle(.roundedBorder)
-        .truncationMode(.tail)
         .padding(.vertical, 6)
         .opacity(drag.id == preset.id ? 0.4 : 1)
+    }
+}
+
+/// A text field that ends in "…" when idle and scrolls while you edit. SwiftUI's TextField can't:
+/// with .truncationMode the cell isn't scrollable, so the caret walks off the right edge and the
+/// text never follows it. AppKit cells can't truncate and scroll at once, so switch on focus.
+struct Field: NSViewRepresentable {
+    var placeholder: String
+    @Binding var text: String
+    var isError = false
+
+    func makeNSView(context: Context) -> ScrollingTextField {
+        let f = ScrollingTextField()
+        f.bezelStyle = .roundedBezel
+        f.isBezeled = true
+        f.usesSingleLineMode = true
+        f.cell?.wraps = false
+        f.idle()
+        f.delegate = context.coordinator
+        f.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        f.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        return f
+    }
+
+    func updateNSView(_ f: ScrollingTextField, context: Context) {
+        context.coordinator.parent = self
+        if f.stringValue != text { f.stringValue = text }
+        f.placeholderString = placeholder
+        f.textColor = isError ? .systemRed : .labelColor
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator(self) }
+
+    final class Coordinator: NSObject, NSTextFieldDelegate {
+        var parent: Field
+        init(_ parent: Field) { self.parent = parent }
+        func controlTextDidChange(_ n: Notification) {
+            guard let f = n.object as? NSTextField else { return }
+            parent.text = f.stringValue
+            // The binding may rewrite the value (the badge keeps 2 characters).
+            if f.stringValue != parent.text { f.stringValue = parent.text }
+        }
+    }
+}
+
+final class ScrollingTextField: NSTextField {
+    func idle() { cell?.lineBreakMode = .byTruncatingTail; needsDisplay = true }
+
+    override func becomeFirstResponder() -> Bool {
+        cell?.isScrollable = true  // must be set before the field editor is set up
+        return super.becomeFirstResponder()
+    }
+    override func textDidEndEditing(_ n: Notification) {
+        super.textDidEndEditing(n)
+        idle()
     }
 }
 
@@ -173,6 +225,50 @@ final class EditorWindow {
                     windowNumber: w.windowNumber, context: nil, characters: c, charactersIgnoringModifiers: c, isARepeat: false, keyCode: 0)!, atStart: false)
             }
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.08, execute: next)
+        }
+        next()
+    }
+
+    /// Test hook: focus the longest field, put the caret at the start, press → (real key events)
+    /// until the end, and print whether the caret stayed inside the visible part of the field.
+    func arrowRight(then done: @escaping () -> Void) {
+        guard let w = window, let root = w.contentView,
+              let field = fields(root).max(by: { $0.stringValue.count < $1.stringValue.count }) else { return }
+        w.makeFirstResponder(field)
+        guard let ed = field.currentEditor() as? NSTextView else { return }
+        ed.setSelectedRange(NSRange(location: 0, length: 0))
+        let cell = field.cell!
+        print("cell scrollable:", cell.isScrollable, "wraps:", cell.wraps, "lineBreak:", cell.lineBreakMode.rawValue,
+              "| editor horizontallyResizable:", ed.isHorizontallyResizable); fflush(stdout)
+        let len = field.stringValue.count
+        var hidden = 0, presses = 0
+        func next() {
+            let loc = ed.selectedRange().location
+            if loc > 0, let lm = ed.layoutManager, let tc = ed.textContainer {
+                let g = lm.glyphIndexForCharacter(at: loc - 1)
+                let r = lm.boundingRect(forGlyphRange: NSRange(location: g, length: 1), in: tc)
+                let x = field.convert(NSPoint(x: r.maxX + ed.textContainerOrigin.x, y: 0), from: ed).x
+                if x > field.bounds.maxX - 2 { hidden += 1 }
+            }
+            guard presses < len + 3 else {
+                print("caret at \(ed.selectedRange().location)/\(len), hidden after \(hidden) of \(presses) presses"); fflush(stdout)
+                for type in [NSEvent.EventType.keyDown, .keyUp] {  // Tab out: the field should go back to "…"
+                    NSApp.postEvent(NSEvent.keyEvent(with: type, location: .zero, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+                        windowNumber: w.windowNumber, context: nil, characters: "\t", charactersIgnoringModifiers: "\t", isARepeat: false, keyCode: 48)!, atStart: false)
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                    print("after Tab: editing:", field.currentEditor() != nil, "lineBreak:", cell.lineBreakMode.rawValue); fflush(stdout)
+                    done()
+                }
+                return
+            }
+            presses += 1
+            for type in [NSEvent.EventType.keyDown, .keyUp] {
+                let c = String(UnicodeScalar(NSRightArrowFunctionKey)!)
+                NSApp.postEvent(NSEvent.keyEvent(with: type, location: .zero, modifierFlags: [.numericPad, .function], timestamp: ProcessInfo.processInfo.systemUptime,
+                    windowNumber: w.windowNumber, context: nil, characters: c, charactersIgnoringModifiers: c, isARepeat: false, keyCode: 124)!, atStart: false)
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.03, execute: next)
         }
         next()
     }
