@@ -17,8 +17,8 @@ It uses nothing at idle: 0% CPU, about 14 MB of memory, and no network traffic u
 
 ## Install
 
-1. Download `Deeanes-<version>.zip` from [Releases](../../releases) and unzip it. It runs on Apple Silicon Macs.
-2. Move `Deeanes.app` to `/Applications` and open it.
+1. Download `Deeanes-<version>.dmg` from [Releases](../../releases), open it, and drag Deeanes to Applications. A `.zip` is also there if you prefer.
+2. Open Deeanes from Applications.
 3. The app is not notarized, so macOS blocks the first launch. Allow it in **System Settings → Privacy & Security → Open Anyway**, or run:
    ```sh
    xattr -dr com.apple.quarantine /Applications/Deeanes.app
@@ -31,7 +31,8 @@ You need an admin account on the Mac. Deeanes changes DNS through macOS's `netwo
 You only need the Xcode Command Line Tools (`xcode-select --install`):
 
 ```sh
-./build.sh               # → build/Deeanes.app
+./build.sh                   # → build/Deeanes.app
+./dist.sh                    # → build/Deeanes-<version>.dmg and .zip (DMG needs uv)
 swift tools/make-icon.swift  # regenerates Resources/AppIcon.icns
 ```
 
