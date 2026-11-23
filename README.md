@@ -10,7 +10,7 @@ A tiny macOS menu bar app for switching system-wide DNS servers in one click, wi
 - **Ad-block detection.** A shield marks servers that block ads.
 - **Interception warning.** A red line appears if your network or ISP is secretly answering DNS for you.
 - **Menu bar badge.** Shows which server is active (`CF`, `G`, …), including after changes made in System Settings.
-- **Editable list.** Rename, reorder, add, or remove servers, and set your own badge, in Edit Servers.
+- **Editable list.** Rename, reorder, add, or remove servers, and set your own badge, in Edit Servers. Servers can be IP addresses or hostnames (`dns.example.com`); hostnames are looked up once when you type them, since macOS only accepts IPs.
 
 ## Resource use
 
