@@ -1,6 +1,4 @@
-<img src="docs/icon.png" width="96" alt="">
-
-# Deeanes
+# <img src="docs/icon.png" width="44" align="absmiddle" alt=""> Deeanes
 
 A tiny macOS menu bar app for switching system-wide DNS servers in one click, with live latency for each server.
 
@@ -13,11 +11,21 @@ A tiny macOS menu bar app for switching system-wide DNS servers in one click, wi
 - **Menu bar badge.** Shows which server is active (`CF`, `G`, …), including after changes made in System Settings.
 - **Editable list.** Rename, reorder, add, or remove servers, and set your own badge, in Edit Servers.
 
-It uses nothing at idle: 0% CPU, about 14 MB of memory, and no network traffic until you open the menu.
+## Resource use
+
+Measured on an M4 MacBook Air (macOS 27), v0.0.2:
+
+| | Menu closed | Menu open (checks every second) |
+|---|---|---|
+| CPU | 0% (0.01 s of CPU per minute) | ~1.2% of one core |
+| Memory | 14 MB | 22 MB |
+| Network | None | ~1.5 KB/s of DNS queries* |
+
+\*Estimated from packet sizes for the default list, since macOS doesn't track traffic per app for short-lived UDP queries.
 
 ## Install
 
-1. Download `Deeanes-<version>.dmg` from [Releases](../../releases), open it, and drag Deeanes to Applications. A `.zip` is also there if you prefer.
+1. Download `Deeanes-<version>.dmg` from [Releases](../../releases), open it, and drag Deeanes to Applications. It is about 490 KB. A `.zip` is also there if you prefer.
 2. Open Deeanes from Applications.
 3. The app is not notarized, so macOS blocks the first launch. Allow it in **System Settings → Privacy & Security → Open Anyway**, or run:
    ```sh
