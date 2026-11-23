@@ -14,6 +14,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// Recent checks per server list: (time, ms), ms = -1 when nothing answered. In memory only.
     var samples: [[String]: [(at: Date, ms: Double)]] = [:]
     static let window: TimeInterval = 30  // seconds of samples used for jitter and loss
+    /// Server list DNS is set to right now (as its preset lists it, so it shares samples with its menu row).
+    var activeServers: [String] = []
+    /// Menu bar icon before any loss tint.
+    var icon = NSImage()
+    /// Menu bar tooltip without the loss note.
+    var baseTip = ""
+    /// While the menu is closed, the active servers alone are checked this often, so the icon can
+    /// turn red on packet loss. One UDP query, so it costs next to nothing.
+    static let backgroundEvery: TimeInterval = 5
+    var backgroundTimer: Timer?
     /// Whether each server list blocks ads, checked once per menu open and remembered across
     /// launches so the menu can size itself for the tags it will show.
     var adBlock: [[String]: Bool] {
@@ -56,6 +66,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         watchDNS()
         presetSub = PresetStore.shared.$presets.receive(on: RunLoop.main).sink { [weak self] _ in self?.updateBadge() }
         updateBadge()
+        let t = Timer(timeInterval: Self.backgroundEvery, repeats: true) { [weak self] _ in self?.checkActive() }
+        RunLoop.main.add(t, forMode: .common)
+        backgroundTimer = t
+        checkActive()
         runTestHooks()
     }
 
@@ -81,9 +95,46 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let match = current.isEmpty ? nil
             : PresetStore.shared.presets.first { $0.isValid && Set($0.servers) == Set(current) }
         let text = match?.shortName ?? ""
-        item.button?.image = Icon.make(badge: text)
+        icon = Icon.make(badge: text)
         if env["DEEANES_LOG_BADGE"] != nil { print("badge:", text.isEmpty ? "(none)" : text); fflush(stdout) }
-        item.button?.toolTip = match.map { "DNS: \($0.name)" } ?? (current.isEmpty ? "DNS: Automatic" : "DNS: \(current.joined(separator: ", "))")
+        baseTip = match.map { "DNS: \($0.name)" } ?? (current.isEmpty ? "DNS: Automatic" : "DNS: \(current.joined(separator: ", "))")
+        let active = match?.servers ?? (current.isEmpty ? DNS.primary().map(DNS.automatic(for:)) ?? [] : current)
+        activeServers = env["DEEANES_ACTIVE_SERVERS"].map(parseServers) ?? active
+        updateHealth()
+    }
+
+    /// Tints the icon red while the active servers dropped any check in the last `window` seconds.
+    func updateHealth() {
+        let now = Date()
+        let recent = (samples[activeServers] ?? []).filter { now.timeIntervalSince($0.at) < Self.window }
+        let lost = recent.filter { $0.ms < 0 }.count
+        item.button?.image = lost > 0 ? Icon.tinted(icon, .systemRed) : icon
+        item.button?.toolTip = lost == 0 ? baseTip
+            : baseTip + "\n\(Int((Double(lost) / Double(recent.count) * 100).rounded()))% packet loss in the last \(Int(Self.window)) s"
+        if env["DEEANES_LOG_BADGE"] != nil { print("loss:", lost, "/", recent.count); fflush(stdout) }
+    }
+
+    /// Background check of the active servers; the menu's own 1 s polling covers them while it's open.
+    func checkActive() {
+        let servers = activeServers
+        guard pollTimer == nil, !servers.isEmpty else { updateHealth(); return }
+        DispatchQueue.global(qos: .utility).async {
+            let ms = Probe.first(servers)?.ms
+            RunLoop.main.perform(inModes: [.common]) {
+                self.record(servers, ms)
+                self.updateHealth()
+            }
+        }
+    }
+
+    /// Adds a check result (nil = nothing answered) and drops samples older than `window`.
+    @discardableResult
+    func record(_ servers: [String], _ ms: Double?) -> [(at: Date, ms: Double)] {
+        let now = Date()
+        var list = (samples[servers] ?? []).filter { now.timeIntervalSince($0.at) < Self.window }
+        list.append((now, ms ?? -1))
+        samples[servers] = list
+        return list
     }
 
     // MARK: Menu lifecycle
@@ -296,10 +347,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 // Run-loop block in common modes so it lands while the menu is being tracked.
                 RunLoop.main.perform(inModes: [.common]) {
                     defer { finish() }
-                    let now = Date()
-                    var list = (self.samples[entry.servers] ?? []).filter { now.timeIntervalSince($0.at) < Self.window }
-                    list.append((now, ms ?? -1))
-                    self.samples[entry.servers] = list
+                    let list = self.record(entry.servers, ms)
+                    if entry.servers == self.activeServers { self.updateHealth() }
                     if let ads { self.adBlock[entry.servers] = ads }
                     if let row = self.probed.first(where: { $0.servers == entry.servers }) {
                         row.item.attributedTitle = self.title(row.name, list, servers: row.servers)

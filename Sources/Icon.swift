@@ -59,4 +59,18 @@ enum Icon {
         img.accessibilityDescription = "DNS: \(badge)"
         return img
     }
+
+    /// The same icon painted in a fixed colour (e.g. red for packet loss). Not a template, since
+    /// the menu bar would otherwise repaint it in its own monochrome.
+    static func tinted(_ icon: NSImage, _ color: NSColor) -> NSImage {
+        let img = NSImage(size: icon.size, flipped: false) { r in
+            icon.draw(in: r)
+            color.set()
+            r.fill(using: .sourceAtop)
+            return true
+        }
+        img.isTemplate = false
+        img.accessibilityDescription = icon.accessibilityDescription
+        return img
+    }
 }
