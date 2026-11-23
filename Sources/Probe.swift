@@ -4,8 +4,8 @@ import Foundation
 enum Probe {
     struct Reply { let ms: Double; let bytes: [UInt8] }
 
-    /// One A query for `name` to `server`. nil if nothing answered within the timeout.
-    static func query(_ server: String, name: String = "apple.com", timeout: Int32 = 1000) -> Reply? {
+    /// One query for `name` to `server` (type A unless given). nil if nothing answered within the timeout.
+    static func query(_ server: String, name: String = "apple.com", type: UInt16 = 1, timeout: Int32 = 1000) -> Reply? {
         var sa4 = sockaddr_in(), sa6 = sockaddr_in6()
         let isV6: Bool
         if inet_pton(AF_INET, server, &sa4.sin_addr) == 1 {
@@ -25,9 +25,12 @@ enum Probe {
         defer { close(fd) }
 
         let id = UInt16.random(in: 0...UInt16.max)
-        var q: [UInt8] = [UInt8(id >> 8), UInt8(id & 0xff), 0x01, 0x00, 0, 1, 0, 0, 0, 0, 0, 0]
+        // Non-A queries (SVCB) can have big answers, so they advertise a larger UDP size with EDNS.
+        let edns = type != 1
+        var q: [UInt8] = [UInt8(id >> 8), UInt8(id & 0xff), 0x01, 0x00, 0, 1, 0, 0, 0, 0, 0, edns ? 1 : 0]
         for label in name.split(separator: ".") { q.append(UInt8(label.utf8.count)); q += label.utf8 }
-        q += [0, 0, 1, 0, 1]  // root, type A, class IN
+        q += [0, UInt8(type >> 8), UInt8(type & 0xff), 0, 1]  // root, type, class IN
+        if edns { q += [0, 0, 41, 0x04, 0xd0, 0, 0, 0, 0, 0, 0] }  // OPT, 1232-byte UDP size
 
         let start = DispatchTime.now().uptimeNanoseconds
         let sent: Int = isV6
@@ -35,7 +38,7 @@ enum Probe {
             : withUnsafePointer(to: &sa4) { $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { sendto(fd, q, q.count, 0, $0, socklen_t(MemoryLayout<sockaddr_in>.size)) } }
         guard sent == q.count else { return nil }
 
-        var buf = [UInt8](repeating: 0, count: 512)
+        var buf = [UInt8](repeating: 0, count: 1500)
         while true {
             let elapsed = Int32((DispatchTime.now().uptimeNanoseconds - start) / 1_000_000)
             var pfd = pollfd(fd: fd, events: Int16(POLLIN), revents: 0)
@@ -91,6 +94,11 @@ enum Probe {
 
     /// IPv4 addresses in the answer section of a reply.
     static func aRecords(_ b: [UInt8]) -> [[UInt8]] {
+        records(b, type: 1).filter { $0.count == 4 }.map(Array.init)
+    }
+
+    /// Rdata of every answer record of `type` in a reply.
+    static func records(_ b: [UInt8], type want: Int) -> [ArraySlice<UInt8>] {
         func skipName(_ i: inout Int) {
             while i < b.count {
                 let len = Int(b[i])
@@ -99,10 +107,11 @@ enum Probe {
                 i += len + 1
             }
         }
+        guard b.count >= 12 else { return [] }
         let qd = Int(b[4]) << 8 | Int(b[5]), an = Int(b[6]) << 8 | Int(b[7])
         var i = 12
         for _ in 0..<qd { skipName(&i); i += 4 }
-        var out: [[UInt8]] = []
+        var out: [ArraySlice<UInt8>] = []
         for _ in 0..<an {
             skipName(&i)
             guard i + 10 <= b.count else { break }
@@ -110,7 +119,7 @@ enum Probe {
             let len = Int(b[i + 8]) << 8 | Int(b[i + 9])
             i += 10
             guard i + len <= b.count else { break }
-            if type == 1 && len == 4 { out.append(Array(b[i..<i + 4])) }
+            if type == want { out.append(b[i..<i + len]) }
             i += len
         }
         return out

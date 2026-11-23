@@ -26,6 +26,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                                       forKey: "adBlock")
         }
     }
+    /// Encrypted protocols macOS uses for each server list via DDR (e.g. ["DoH", "DoT"]; empty = plain),
+    /// checked once per menu open and remembered across launches, like `adBlock`.
+    var encryption: [[String]: [String]] {
+        get {
+            let raw = UserDefaults.standard.dictionary(forKey: "encryption") as? [String: [String]] ?? [:]
+            return Dictionary(uniqueKeysWithValues: raw.map { (parseServers($0.key), $0.value) })
+        }
+        set {
+            UserDefaults.standard.set(Dictionary(uniqueKeysWithValues: newValue.map { ($0.key.joined(separator: ","), $0.value) }),
+                                      forKey: "encryption")
+        }
+    }
     var interceptItem: NSMenuItem?
     var tabStop: CGFloat = 200
 
@@ -103,14 +115,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let presets = PresetStore.shared.presets
 
         // Fixed tab stop wide enough for the longest name, so values arriving don't resize the menu.
-        // Rows only reserve room for the ad-block shield if they have it or haven't been checked yet.
+        // Rows only reserve room for the lock and shield if they have them or haven't been checked yet.
         let font = NSFont.menuFont(ofSize: 0)
-        let tagWidth = adTag.size().width
-        let known = adBlock
+        let known = adBlock, knownEnc = encryption
         let dhcpServers = primary.map(DNS.automatic(for:)) ?? []
         let rows = [("Automatic", dhcpServers)] + presets.map { ($0.name, $0.servers) }
         let widest = rows.map { name, servers in
-            (name as NSString).size(withAttributes: [.font: font]).width + (known[servers] == false ? 0 : tagWidth)
+            (name as NSString).size(withAttributes: [.font: font]).width
+                + (knownEnc[servers]?.isEmpty == true ? 0 : lockTag.size().width)
+                + (known[servers] == false ? 0 : adTag.size().width)
         }.max() ?? 100
         // Latency is right-aligned, so the stop sits after the widest name + a gap + the widest value.
         let digits = NSFont.monospacedDigitSystemFont(ofSize: font.pointSize, weight: .regular)
@@ -146,15 +159,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let dhcp = primary.map(DNS.automatic(for:)) ?? []
         let auto = presetItem("Automatic", servers: [], probe: dhcp)
         auto.toolTip = dhcp.isEmpty ? "Use the servers your router hands out (DHCP)"
-                                    : "Servers your router hands out (DHCP):\n" + dhcp.joined(separator: "\n")
+                                    : notes(dhcp) + "Servers your router hands out (DHCP):\n" + dhcp.joined(separator: "\n")
         auto.state = current.isEmpty ? .on : .off
         menu.addItem(auto)
 
         for p in presets {
             let it = presetItem(p.name.isEmpty ? "Untitled" : p.name, servers: p.servers, probe: p.isValid ? p.servers : [])
             it.isEnabled = p.isValid
-            it.toolTip = !p.isValid ? "Fix this entry in Edit Servers…"
-                : (adBlock[p.servers] == true ? "Blocks ads\n" : "") + p.servers.joined(separator: "\n")
+            it.toolTip = !p.isValid ? "Fix this entry in Edit Servers…" : notes(p.servers) + p.servers.joined(separator: "\n")
             it.state = p.isValid && Set(p.servers) == Set(current) ? .on : .off
             menu.addItem(it)
         }
@@ -188,15 +200,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         return it
     }
 
+    /// Tooltip lines for what a server list does beyond plain DNS.
+    func notes(_ servers: [String]) -> String {
+        var lines: [String] = []
+        if let enc = encryption[servers], !enc.isEmpty {
+            lines.append("Encrypted: macOS upgrades it to \(enc.joined(separator: " and ")) automatically")
+        }
+        if adBlock[servers] == true { lines.append("Blocks ads") }
+        return lines.map { $0 + "\n" }.joined()
+    }
+
     // MARK: Rows
 
-    /// " [shield]" shown after names of servers that block ads.
-    lazy var adTag: NSAttributedString = {
+    /// " [lock]" after names of servers macOS talks to over encrypted DNS.
+    lazy var lockTag = symbolTag("lock.fill", "Encrypted")
+    /// " [shield]" after names of servers that block ads.
+    lazy var adTag = symbolTag("shield.fill", "Blocks ads")
+
+    func symbolTag(_ symbol: String, _ label: String) -> NSAttributedString {
         let font = NSFont.menuFont(ofSize: 0)
         let cfg = NSImage.SymbolConfiguration(pointSize: font.pointSize - 2, weight: .regular)
             .applying(.init(paletteColors: [.secondaryLabelColor]))
         let s = NSMutableAttributedString(string: " ", attributes: [.font: font])
-        if let img = NSImage(systemSymbolName: "shield.fill", accessibilityDescription: "Blocks ads")?
+        if let img = NSImage(systemSymbolName: symbol, accessibilityDescription: label)?
             .withSymbolConfiguration(cfg) {
             let att = NSTextAttachment()
             att.image = img
@@ -204,27 +230,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             s.append(NSAttributedString(attachment: att))
         }
         return s
-    }()
+    }
     var jitterColumn: CGFloat = 64
 
     func refreshTitles() {
         for e in probed {
-            e.item.attributedTitle = title(e.name, samples[e.servers] ?? [], blocksAds: adBlock[e.servers] ?? false)
+            e.item.attributedTitle = title(e.name, samples[e.servers] ?? [], servers: e.servers)
         }
     }
 
-    /// Name [shield] | 40 ms | ±3 ms (or "8% loss" when checks went unanswered) — fixed tab stops,
+    /// Name [lock] [shield] | 40 ms | ±3 ms (or "8% loss" when checks went unanswered) — fixed tab stops,
     /// so values updating never resize the menu.
-    func title(_ name: String, _ recent: [(at: Date, ms: Double)], blocksAds: Bool) -> NSAttributedString {
+    func title(_ name: String, _ recent: [(at: Date, ms: Double)], servers: [String]) -> NSAttributedString {
         let para = NSMutableParagraphStyle()
         para.tabStops = [NSTextTab(textAlignment: .right, location: tabStop),
                          NSTextTab(textAlignment: .right, location: tabStop + jitterColumn)]
         let font = NSFont.menuFont(ofSize: 0)
         let digits = NSFont.monospacedDigitSystemFont(ofSize: font.pointSize, weight: .regular)
         let s = NSMutableAttributedString(string: name, attributes: [.font: font])
-        if blocksAds {
-            s.append(adTag)
-        }
+        if encryption[servers]?.isEmpty == false { s.append(lockTag) }
+        if adBlock[servers] == true { s.append(adTag) }
         func col(_ text: String, _ color: NSColor) {
             s.append(NSAttributedString(string: "\t" + text, attributes: [.font: digits, .foregroundColor: color]))
         }
@@ -277,8 +302,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                     self.samples[entry.servers] = list
                     if let ads { self.adBlock[entry.servers] = ads }
                     if let row = self.probed.first(where: { $0.servers == entry.servers }) {
-                        row.item.attributedTitle = self.title(row.name, list, blocksAds: self.adBlock[row.servers] ?? false)
+                        row.item.attributedTitle = self.title(row.name, list, servers: row.servers)
                     }
+                }
+            }
+        }
+        // Encryption needs TLS handshakes, so it runs on its own and never holds up latency.
+        // It isn't counted in inFlight, so the 1 s ticks keep going while it runs.
+        for entry in probed where full {
+            group.enter()
+            DispatchQueue.global(qos: .utility).async {
+                let enc = Encryption.check(entry.servers)
+                RunLoop.main.perform(inModes: [.common]) {
+                    defer { group.leave() }
+                    if let enc { self.encryption[entry.servers] = enc }
+                    self.refreshTitles()
                 }
             }
         }
@@ -363,6 +401,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 print("badge:", self.item.button?.title ?? "", "menu width:", self.menu.size.width)
                 exit(0)
             }
+        }
+        if let list = env["DEEANES_CHECK_ENCRYPTION"] {
+            for server in parseServers(list) {
+                let eps = Encryption.designated(server)
+                print(server, "advertises:", eps.map { $0.map { "\($0.target)[\($0.alpn.joined(separator: ","))]" }.joined(separator: " ") } ?? "no reply",
+                      "| macOS uses:", Encryption.check([server]).map { $0.isEmpty ? "plain" : $0.joined(separator: ", ") } ?? "unknown")
+            }
+            exit(0)
         }
         if let path = env["DEEANES_EDITOR_SNAPSHOT"] {
             EditorWindow.shared.show()
