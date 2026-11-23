@@ -410,6 +410,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             }
             exit(0)
         }
+        if env["DEEANES_SHOW_EDITOR"] != nil { EditorWindow.shared.show() }
+        if env["DEEANES_TIME_CLICKS"] != nil {
+            EditorWindow.shared.show()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1) { EditorWindow.shared.timeClicks() }
+        }
         if let path = env["DEEANES_EDITOR_SNAPSHOT"] {
             EditorWindow.shared.show()
             DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
