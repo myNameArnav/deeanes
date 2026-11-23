@@ -1,3 +1,5 @@
+<img src="docs/icon.png" width="96" alt="">
+
 # Deeanes
 
 A tiny macOS menu bar app for switching system-wide DNS servers in one click, with live latency for each server.
@@ -15,21 +17,22 @@ It uses nothing at idle: 0% CPU, about 14 MB of memory, and no network traffic u
 
 ## Install
 
-1. Download `Deeanes-<version>.zip` from [Releases](../../releases) and unzip it. It is a universal binary for Apple Silicon and Intel.
+1. Download `Deeanes-<version>.zip` from [Releases](../../releases) and unzip it. It runs on Apple Silicon Macs.
 2. Move `Deeanes.app` to `/Applications` and open it.
 3. The app is not notarized, so macOS blocks the first launch. Allow it in **System Settings → Privacy & Security → Open Anyway**, or run:
    ```sh
    xattr -dr com.apple.quarantine /Applications/Deeanes.app
    ```
 
-You need an admin account on the Mac. Deeanes changes DNS through macOS's `networksetup` and doesn't need a helper or your password. It requires macOS 13 or later and has been tested on Apple Silicon.
+You need an admin account on the Mac. Deeanes changes DNS through macOS's `networksetup` and doesn't need a helper or your password. It requires an Apple Silicon Mac with macOS 13 or later.
 
 ## Build from source
 
 You only need the Xcode Command Line Tools (`xcode-select --install`):
 
 ```sh
-./build.sh    # → build/Deeanes.app (universal)
+./build.sh               # → build/Deeanes.app
+swift tools/make-icon.swift  # regenerates Resources/AppIcon.icns
 ```
 
 ## Notes
