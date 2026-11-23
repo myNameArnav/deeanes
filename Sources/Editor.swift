@@ -46,8 +46,28 @@ struct EditorView: View {
 struct PresetRow: View {
     @Binding var preset: Preset
     @ObservedObject var drag: DragState
+    @ObservedObject var store = PresetStore.shared
     var onDelete: () -> Void
-    private var invalid: [String] { preset.servers.filter { !isIPAddress($0) } }
+
+    private var statuses: [(entry: String, status: EntryStatus)] {
+        preset.entries.map { ($0, store.status(of: $0, in: preset)) }
+    }
+    private var hasError: Bool {
+        statuses.contains { if case .invalid = $0.status { return true }; if case .failed = $0.status { return true }; return false }
+    }
+    /// One line per entry that needs explaining; plain IPs speak for themselves.
+    private var serversHelp: String {
+        let lines = statuses.compactMap { e, s -> String? in
+            switch s {
+            case .ip: return nil
+            case .resolved(let ips): return "\(e) → \(ips.joined(separator: ", "))"
+            case .resolving: return "\(e): resolving…"
+            case .failed(let why): return "\(e): couldn't resolve (\(why))"
+            case .invalid: return "\(e): not an IP address or hostname"
+            }
+        }
+        return lines.isEmpty ? "IP addresses or hostnames, separated by commas or spaces" : lines.joined(separator: "\n")
+    }
 
     var body: some View {
         HStack(spacing: 8) {
@@ -67,10 +87,9 @@ struct PresetRow: View {
                 set: { preset.badge = $0.isEmpty ? nil : String($0.prefix(2)) }))
                 .frame(width: 44)
                 .help("Label shown next to the menu bar icon while this is active")
-            TextField("1.1.1.1, 2606:4700:4700::1111", text: $preset.serversText)
-                .foregroundStyle(invalid.isEmpty ? Color.primary : Color.red)
-                .help(invalid.isEmpty ? "Separate addresses with commas or spaces"
-                                      : "Not an IP address: \(invalid.joined(separator: ", "))")
+            TextField("1.1.1.1, dns.example.com", text: $preset.serversText)
+                .foregroundStyle(hasError ? Color.red : Color.primary)
+                .help(serversHelp)
             Button(action: onDelete) { Image(systemName: "minus.circle") }
                 .buttonStyle(.borderless)
                 .help("Remove")
@@ -133,12 +152,34 @@ final class EditorWindow {
         window?.makeKeyAndOrderFront(nil)
     }
 
+    private func fields(_ v: NSView) -> [NSTextField] {
+        (v as? NSTextField).map { $0.isEditable ? [$0] : [] } ?? [] + v.subviews.flatMap(fields)
+    }
+
+    /// Test hook: type into the last row's servers field one key at a time, like a person would.
+    func type(_ text: String, then done: @escaping () -> Void) {
+        guard let w = window, let root = w.contentView,
+              let field = fields(root).max(by: { a, b in
+                  let ra = a.convert(a.bounds, to: nil), rb = b.convert(b.bounds, to: nil)
+                  return (-ra.minY, ra.minX) < (-rb.minY, rb.minX) })  // bottom row, rightmost
+        else { return }
+        w.makeFirstResponder(field)
+        var keys = Array(text)
+        func next() {
+            guard !keys.isEmpty else { return done() }
+            let c = String(keys.removeFirst())
+            for type in [NSEvent.EventType.keyDown, .keyUp] {
+                NSApp.postEvent(NSEvent.keyEvent(with: type, location: .zero, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+                    windowNumber: w.windowNumber, context: nil, characters: c, charactersIgnoringModifiers: c, isARepeat: false, keyCode: 0)!, atStart: false)
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.08, execute: next)
+        }
+        next()
+    }
+
     /// Test hook: click every text field and print ms from mouse-down to the field taking focus.
     func timeClicks() {
         guard let w = window, let root = w.contentView else { return }
-        func fields(_ v: NSView) -> [NSTextField] {
-            (v as? NSTextField).map { $0.isEditable ? [$0] : [] } ?? [] + v.subviews.flatMap(fields)
-        }
         let targets = fields(root).sorted { ($0.convert($0.bounds, to: nil).maxY, $1.convert($1.bounds, to: nil).minX) > ($1.convert($1.bounds, to: nil).maxY, $0.convert($0.bounds, to: nil).minX) }
         var i = 0
         func next() {

@@ -166,7 +166,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         for p in presets {
             let it = presetItem(p.name.isEmpty ? "Untitled" : p.name, servers: p.servers, probe: p.isValid ? p.servers : [])
             it.isEnabled = p.isValid
-            it.toolTip = !p.isValid ? "Fix this entry in Edit Servers…" : notes(p.servers) + p.servers.joined(separator: "\n")
+            it.toolTip = !p.isValid ? invalidReason(p) : notes(p.servers) + serverLines(p).joined(separator: "\n")
             it.state = p.isValid && Set(p.servers) == Set(current) ? .on : .off
             menu.addItem(it)
         }
@@ -191,6 +191,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let it = NSMenuItem(title: title, action: sel, keyEquivalent: key)
         it.target = target ?? self
         return it
+    }
+
+    /// Typed entries for the tooltip, with hostnames expanded: "dns.example.com → 192.0.2.1, 2001:db8::1".
+    func serverLines(_ p: Preset) -> [String] {
+        p.entries.map { isIPAddress($0) ? $0 : "\($0) → \((p.resolved?[hostKey($0)] ?? []).joined(separator: ", "))" }
+    }
+
+    func invalidReason(_ p: Preset) -> String {
+        let store = PresetStore.shared
+        for e in p.entries {
+            switch store.status(of: e, in: p) {
+            case .resolving: return "Resolving \(e)…"
+            case .failed(let why): return "Couldn't resolve \(e) (\(why))"
+            default: continue
+            }
+        }
+        return "Fix this entry in Edit Servers…"
     }
 
     func presetItem(_ name: String, servers: [String], probe: [String]) -> NSMenuItem {
@@ -372,7 +389,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         if let title = env["DEEANES_SELECT"] {
             rebuild()
-            if let it = menu.items.first(where: { $0.title == title }), let a = it.action {
+            // Titles carry latency and tags ("Quad9 [lock]\t40 ms"), so match the name prefix.
+            if let it = menu.items.first(where: { $0.action == #selector(choose(_:)) && $0.title.hasPrefix(title) }),
+               let a = it.action {
                 NSApp.sendAction(a, to: it.target, from: it)
             }
         }
@@ -381,6 +400,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             measure(full: true) {
                 for it in self.menu.items where !it.isHidden {
                     print(it.isSeparatorItem ? "---" : "\(it.state == .on ? "✓" : " ") \(it.attributedTitle?.string ?? it.title)")
+                    if self.env["DEEANES_PRINT_TOOLTIPS"] != nil, let tip = it.toolTip {
+                        print(tip.split(separator: "\n").map { "      | \($0)" }.joined(separator: "\n"))
+                    }
                 }
                 if let p = self.env["DEEANES_ICON_PNG"], let img = self.item.button?.image {
                     // Render the template icon white-on-dark and dark-on-light at 8x for inspection.
@@ -415,7 +437,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             EditorWindow.shared.show()
             DispatchQueue.main.asyncAfter(deadline: .now() + 1) { EditorWindow.shared.timeClicks() }
         }
-        if let path = env["DEEANES_EDITOR_SNAPSHOT"] {
+        if let text = env["DEEANES_TYPE_SERVERS"] {
+            // Types into the last row's servers field, then prints what the store resolved.
+            EditorWindow.shared.show()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+                EditorWindow.shared.type(text) {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                        let store = PresetStore.shared
+                        for p in store.presets {
+                            print(p.name, "|", p.serversText, "|", p.entries.map { "\($0): \(store.status(of: $0, in: p))" }.joined(separator: "; "))
+                        }
+                        if let path = self.env["DEEANES_EDITOR_SNAPSHOT"] { EditorWindow.shared.snapshot(to: path) }
+                        exit(0)
+                    }
+                }
+            }
+        } else if let path = env["DEEANES_EDITOR_SNAPSHOT"] {
             EditorWindow.shared.show()
             DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
                 EditorWindow.shared.snapshot(to: path)
