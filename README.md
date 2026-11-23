@@ -6,6 +6,7 @@ A tiny macOS menu bar app for switching system-wide DNS servers in one click, wi
 
 - **One click, whole system.** Applies to every enabled network service (Wi-Fi, Ethernet, USB tethering). VPN services like Tailscale manage their own DNS and are left alone.
 - **Live latency.** While the menu is open, every server gets a real DNS query each second, with jitter and packet loss over the last 30 s. Your router's row ("Automatic") is a quick read on Wi-Fi quality.
+- **Encrypted DNS.** A lock marks servers that macOS automatically upgrades to DNS over HTTPS or TLS (see below).
 - **Ad-block detection.** A shield marks servers that block ads.
 - **Interception warning.** A red line appears if your network or ISP is secretly answering DNS for you.
 - **Menu bar badge.** Shows which server is active (`CF`, `G`, …), including after changes made in System Settings.
@@ -47,7 +48,7 @@ swift tools/make-icon.swift  # regenerates Resources/AppIcon.icns
 ## Notes
 
 - If a VPN with its own DNS is on (for example Tailscale with "Use Tailscale DNS"), the menu shows "In use: …". In that case, the VPN may override the server you pick.
-- Encrypted DNS (DoH/DoT) is not supported yet.
+- **Encrypted DNS.** macOS 13 and later upgrade a plain DNS server to DNS over HTTPS (DoH) or DNS over TLS (DoT) by themselves, through [DDR](https://www.rfc-editor.org/rfc/rfc9462). This works when the server advertises an encrypted endpoint whose certificate includes the server's IP address. Deeanes runs the same check and shows a lock on servers that pass it. Cloudflare, Google, Quad9, AdGuard DNS and OpenDNS pass it. NextDNS, Mullvad and Control D's free resolver don't. Custom DoH URLs and DNS over QUIC (DoQ) aren't supported: macOS only uses those through a configuration profile or a network extension.
 
 Built almost entirely with AI coding agents.
 
