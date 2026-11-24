@@ -131,11 +131,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         tabStop = ceil(widest) + 20 + w("999 ms")
         jitterColumn = 14 + w("50% loss")
 
-        // Keep the header short so it never sets the menu width: preset name, or first address + count.
-        let match = current.isEmpty ? nil : presets.first { $0.isValid && Set($0.servers) == Set(current) }
-        let summary = current.isEmpty ? "Automatic"
-            : match?.name ?? (current[0] + (current.count > 1 ? " +\(current.count - 1)" : ""))
-        let header = info("\(primary?.name ?? "Network") DNS: \(summary)")
+        // The header names the service. A checked row already says which DNS is set, so only spell it
+        // out for custom servers no row matches: first address + count keeps it from setting the width.
+        let service = primary?.name ?? "Network"
+        let matched = current.isEmpty || presets.contains { $0.isValid && Set($0.servers) == Set(current) }
+        let header = info(matched ? service
+            : "\(service) DNS: \(current[0])" + (current.count > 1 ? " +\(current.count - 1)" : ""))
         header.toolTip = current.isEmpty ? nil : current.joined(separator: "\n")
         menu.addItem(header)
         if !effective.isEmpty && effective != current {
