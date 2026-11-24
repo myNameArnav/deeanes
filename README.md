@@ -2,7 +2,7 @@
 
 A tiny macOS menu bar app for switching system-wide DNS servers in one click, with live latency for each server.
 
-<img src="docs/screenshot.png" width="298" alt="Deeanes menu showing DNS servers with latency, jitter, packet loss, encrypted-DNS locks and an ad-block shield">
+<img src="docs/screenshot.png" width="298" alt="Deeanes menu showing DNS servers with latency, jitter, encrypted-DNS locks and an ad-block shield">
 
 - **One click, whole system.** Applies to every enabled network service (Wi-Fi, Ethernet, USB tethering). VPN services like Tailscale manage their own DNS and are left alone.
 - **Live latency.** While the menu is open, every server gets a real DNS query each second, with jitter and packet loss over the last 30 s. Your router's row ("Automatic") is a quick read on Wi-Fi quality.
@@ -18,6 +18,7 @@ A tiny macOS menu bar app for switching system-wide DNS servers in one click, wi
 
 | Version | Date | Changes |
 |---|---|---|
+| [0.0.6](../../releases/tag/v0.0.6) | 2026-11-24 | Menu header only appears when it adds something (custom servers, VPN, interception) instead of repeating the checked row. |
 | [0.0.5](../../releases/tag/v0.0.5) | 2026-11-24 | Edit Servers: long server lists scroll to follow the caret. |
 | [0.0.4](../../releases/tag/v0.0.4) | 2026-11-24 | Hostnames as DNS servers (looked up once and cached). Editor fields take focus instantly instead of after ~0.5 s. |
 | [0.0.3](../../releases/tag/v0.0.3) | 2026-11-23 | Lock icon for servers macOS upgrades to encrypted DNS (DoH/DoT). |
