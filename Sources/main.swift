@@ -135,7 +135,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let match = current.isEmpty ? nil : presets.first { $0.isValid && Set($0.servers) == Set(current) }
         let summary = current.isEmpty ? "Automatic"
             : match?.name ?? (current[0] + (current.count > 1 ? " +\(current.count - 1)" : ""))
-        let header = info("\(primary?.name ?? "Network"): \(summary)")
+        let header = info("\(primary?.name ?? "Network") DNS: \(summary)")
         header.toolTip = current.isEmpty ? nil : current.joined(separator: "\n")
         menu.addItem(header)
         if !effective.isEmpty && effective != current {
