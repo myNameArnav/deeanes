@@ -39,6 +39,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
     var interceptItem: NSMenuItem?
+    var topSeparator: NSMenuItem?
     var tabStop: CGFloat = 200
 
     var pollTimer: Timer?
@@ -131,14 +132,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         tabStop = ceil(widest) + 20 + w("999 ms")
         jitterColumn = 14 + w("50% loss")
 
-        // The header names the service. A checked row already says which DNS is set, so only spell it
-        // out for custom servers no row matches: first address + count keeps it from setting the width.
-        let service = primary?.name ?? "Network"
+        // A checked row already says which DNS is set, so the header only appears for custom servers
+        // no row matches. First address + count keeps it from setting the menu width.
         let matched = current.isEmpty || presets.contains { $0.isValid && Set($0.servers) == Set(current) }
-        let header = info(matched ? service
-            : "\(service) DNS: \(current[0])" + (current.count > 1 ? " +\(current.count - 1)" : ""))
-        header.toolTip = current.isEmpty ? nil : current.joined(separator: "\n")
-        menu.addItem(header)
+        if !matched {
+            let header = info("\(primary?.name ?? "Network") DNS: \(current[0])"
+                + (current.count > 1 ? " +\(current.count - 1)" : ""))
+            header.toolTip = current.joined(separator: "\n")
+            menu.addItem(header)
+        }
         if !effective.isEmpty && effective != current {
             // Show one address (named when it's Tailscale); the full list is in the tooltip.
             let who = effective.first == "100.100.100.100" ? "Tailscale" : effective[0]
@@ -155,7 +157,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         ic.isHidden = true
         interceptItem = ic
         menu.addItem(ic)
-        menu.addItem(.separator())
+        let sep = NSMenuItem.separator()
+        sep.isHidden = menu.items.allSatisfy(\.isHidden)
+        topSeparator = sep
+        menu.addItem(sep)
 
         let dhcp = primary.map(DNS.automatic(for:)) ?? []
         let auto = presetItem("Automatic", servers: [], probe: dhcp)
@@ -346,6 +351,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 RunLoop.main.perform(inModes: [.common]) {
                     defer { finish() }
                     self.interceptItem?.isHidden = !hit
+                    if hit { self.topSeparator?.isHidden = false }
                 }
             }
         }
